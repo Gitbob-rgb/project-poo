@@ -13,12 +13,6 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
-    <Filter Include="IHM">
-      <UniqueIdentifier>{57d3965e-2e62-4119-84b4-67f65ddc77de}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Service">
-      <UniqueIdentifier>{06d731f3-32c9-4182-954e-f98a1ab1c367}</UniqueIdentifier>
-    </Filter>
     <Filter Include="Componant">
       <UniqueIdentifier>{d2b79b0f-1337-4e23-8647-e9f206eefccf}</UniqueIdentifier>
     </Filter>

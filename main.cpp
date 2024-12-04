@@ -1,13 +1,13 @@
 #include <SFML/Graphics.hpp>  
 #include <iostream>  
 #include <vector>  
-#include <sstream> // Pour std::stringstream  
-#include <thread> // Pour std::this_thread::sleep_for  
-#include <chrono> // Pour std::chrono::milliseconds  
-
+#include <sstream>  
+#include <thread>  
+#include <chrono>  
 #include <fstream>  
 #include <stdexcept>  
-
+#include <string>  
+#include <windows.h> // Pour les fonctions de l'API Win32  
 
 using namespace std;
 
@@ -39,6 +39,7 @@ public:
     Grid(int r, int c) : rows(r), cols(c) {
         cells.resize(rows, vector<bool>(cols, false));
     }
+
     void initializeFromInput(const string& filename) {
         ifstream file(filename);
         if (!file.is_open()) {
@@ -54,8 +55,6 @@ public:
         file.close();
     }
 
-
-
     void update() {
         vector<vector<bool>> newCells = cells;
 
@@ -64,12 +63,12 @@ public:
                 int livingNeighbors = countLivingNeighbors(i, j);
                 if (cells[i][j]) {
                     if (livingNeighbors < 2 || livingNeighbors > 3) {
-                        newCells[i][j] = false;
+                        newCells[i][j] = false; // Cell dies  
                     }
                 }
                 else {
                     if (livingNeighbors == 3) {
-                        newCells[i][j] = true;
+                        newCells[i][j] = true; // Cell becomes alive  
                     }
                 }
             }
@@ -97,14 +96,44 @@ public:
         }
     }
 
-    void print() const { // Nouvelle méthode pour imprimer la grille dans le terminal  
+    void print() const {
         for (int i = 0; i < rows; ++i) {
             for (int j = 0; j < cols; ++j) {
                 cout << (cells[i][j] ? "1 " : "0 ");
             }
             cout << endl;
         }
-        cout << "-----------------------" << endl; // Ligne de séparation pour les générations  
+        cout << "-----------------------" << endl;
+    }
+
+    void saveToFile(const string& directory, const string& baseFilename, int generation) const {
+        stringstream ss;
+        ss << directory << "\\" << baseFilename << "_gen_" << generation << ".txt";
+
+        ofstream outFile(ss.str());
+        if (!outFile) {
+            cerr << "Erreur : Impossible d'ouvrir le fichier de sortie." << endl;
+            return;
+        }
+        for (int i = 0; i < rows; ++i) {
+            for (int j = 0; j < cols; ++j) {
+                outFile << (cells[i][j] ? "1 " : "0 ");
+            }
+            outFile << endl;
+        }
+        outFile.close();
+    }
+
+    int countLivingCells() const {
+        int count = 0;
+        for (const auto& row : cells) {
+            for (bool cell : row) {
+                if (cell) {
+                    count++;
+                }
+            }
+        }
+        return count;
     }
 };
 
@@ -113,10 +142,11 @@ private:
     sf::RectangleShape button;
     sf::Text buttonText;
     bool isStarted;
-    bool isDisabled; // État pour désactiver le bouton
+    bool isDisabled;
 
 public:
-    StartButton(float x, float y, float width, float height, sf::Font& font) : isStarted(false), isDisabled(false) {
+    StartButton(float x, float y, float width, float height, sf::Font& font)
+        : isStarted(false), isDisabled(false) {
         button.setPosition(x, y);
         button.setSize(sf::Vector2f(width, height));
         button.setFillColor(sf::Color::Green);
@@ -134,7 +164,7 @@ public:
     }
 
     bool isClicked(int mouseX, int mouseY) {
-        return button.getGlobalBounds().contains(mouseX, mouseY);
+        return button.getGlobalBounds().contains(static_cast<float>(mouseX), static_cast<float>(mouseY));
     }
 
     void startSimulation() {
@@ -151,8 +181,8 @@ public:
 
     void disableButton() {
         isDisabled = true;
-        buttonText.setString("Nombre d'itérations max atteint");
-        button.setFillColor(sf::Color::Magenta); // Change the button color to indicate that it is disabled  
+        buttonText.setString("Max Iterations Reached");
+        button.setFillColor(sf::Color::Magenta);
     }
 
     bool getIsStarted() const {
@@ -160,18 +190,58 @@ public:
     }
 
     bool getIsDisabled() const {
-        return isDisabled; // This can help if needed in other logic  
+        return isDisabled;
     }
 };
 
+class ClearButton {
+private:
+    sf::RectangleShape button;
+    sf::Text buttonText;
+
+public:
+    ClearButton(float x, float y, float width, float height, sf::Font& font) {
+        button.setPosition(x, y);
+        button.setSize(sf::Vector2f(width, height));
+        button.setFillColor(sf::Color::Blue);
+
+        buttonText.setFont(font);
+        buttonText.setString("Réinitialiser");
+        buttonText.setCharacterSize(24);
+        buttonText.setFillColor(sf::Color::White);
+        buttonText.setPosition(x + 20, y + 5);
+    }
+
+    void draw(sf::RenderWindow& window) {
+        window.draw(button);
+        window.draw(buttonText);
+    }
+
+    bool isClicked(int mouseX, int mouseY) {
+        return button.getGlobalBounds().contains(static_cast<float>(mouseX), static_cast<float>(mouseY));
+    }
+};
+
+// Fonction pour vérifier si un répertoire existe en utilisant l'API Win32  
+bool directoryExists(const string& path) {
+    DWORD ftyp = GetFileAttributesA(path.c_str());
+    return (ftyp != INVALID_FILE_ATTRIBUTES && (ftyp & FILE_ATTRIBUTE_DIRECTORY));
+}
+
+// Fonction pour créer un répertoire en utilisant l'API Win32  
+bool createDirectory(const string& path) {
+    return CreateDirectoryA(path.c_str(), NULL) || GetLastError() == ERROR_ALREADY_EXISTS;
+}
+
 int main() {
-    int rows = 5; // Nombre de lignes  
+    int rows = 5;  // Nombre de lignes  
     int cols = 10; // Nombre de colonnes  
     int cellSize = 50; // Taille de chaque cellule  
-    int maxIterations = 0; // Nombre d'itérations maximal  
+    int maxIterations = 0; // Nombre maximum d'itérations  
     int iterationsCount = 0; // Compteur d'itérations  
     string mode;
     string filename;
+
     cout << "Choisissez le mode (terminal ou graphique) : ";
     cin >> mode;
 
@@ -180,30 +250,36 @@ int main() {
         return 1;
     }
 
-    // Demande à l'utilisateur le nombre d'itérations  
-    
-
     Grid grid(rows, cols);
-
-    // Configuration de la fenêtre graphique uniquement si le mode est graphique  
     sf::RenderWindow window;
     sf::Font font;
 
     if (mode == "graphique") {
         cout << "Entrez le nombre d'itérations (0 pour une simulation infinie) : ";
         cin >> maxIterations;
-        window.create(sf::VideoMode(cols * cellSize, rows * cellSize + 50), "Jeu de la Vie"); // Espace pour le bouton  
+        window.create(sf::VideoMode(cols * cellSize + 200, rows * cellSize + 50), "Jeu de la Vie");
 
-        if (!font.loadFromFile("arial.ttf")) { // Assurez-vous que "arial.ttf" est dans le même répertoire que le code  
+        if (!font.loadFromFile("arial.ttf")) {
             cerr << "Erreur lors du chargement de la police" << endl;
             return -1;
         }
 
-        StartButton startButton(10, rows * cellSize + 10, 150, 30, font); // Créer le bouton  
+        StartButton startButton(10, rows * cellSize + 10, 150, 30, font);
+        ClearButton clearButton(10, rows * cellSize + 50, 150, 30, font);
+        bool simulationRunning = false;
 
-        bool simulationRunning = false; // Indique si la simulation est en cours  
+        // Textes pour les cellules vivantes et les itérations  
+        sf::Text livingCellsText, iterationsText;
+        livingCellsText.setFont(font);
+        livingCellsText.setCharacterSize(24);
+        livingCellsText.setFillColor(sf::Color::White);
+        livingCellsText.setPosition(cols * cellSize + 20, 10); // Position ajustée à droite  
 
-        // Boucle principale pour le mode graphique  
+        iterationsText.setFont(font);
+        iterationsText.setCharacterSize(24);
+        iterationsText.setFillColor(sf::Color::White);
+        iterationsText.setPosition(cols * cellSize + 20, 50); // Sous le texte des cellules vivantes, position ajustée  
+
         while (window.isOpen()) {
             sf::Event event;
             while (window.pollEvent(event)) {
@@ -211,25 +287,27 @@ int main() {
                     window.close();
                 }
 
-                // Détection du clic de souris  
                 if (event.type == sf::Event::MouseButtonPressed) {
                     if (event.mouseButton.button == sf::Mouse::Left) {
-                        // Vérifier si le bouton est cliqué  
                         if (startButton.isClicked(event.mouseButton.x, event.mouseButton.y)) {
                             if (!startButton.getIsDisabled()) {
-                            if (simulationRunning) {
-                                startButton.pauseSimulation(); // Met en pause la simulation  
-                                simulationRunning = false; // Met à jour l'état  
-                            }
-                            else {
-                                startButton.startSimulation(); // Démarre la simulation  
-                                simulationRunning = true; // Met à jour l'état  
-                                iterationsCount = 0; // Réinitialiser le compteur d'itérations  
+                                if (simulationRunning) {
+                                    startButton.pauseSimulation();
+                                    simulationRunning = false;
+                                }
+                                else {
+                                    startButton.startSimulation();
+                                    simulationRunning = true;
+                                    iterationsCount = 0;
+                                }
                             }
                         }
+                        else if (clearButton.isClicked(event.mouseButton.x, event.mouseButton.y)) {
+                            grid = Grid(rows, cols); // Réinitialiser la grille  
+                            iterationsCount = 0; // Réinitialiser le compteur d'itérations  
+                            startButton = StartButton(10, rows * cellSize + 10, 150, 30, font); // Réinitialiser le bouton  
                         }
                         else {
-                            // Activer/désactiver une cellule si la simulation n'est pas encore commencée  
                             if (!simulationRunning) {
                                 grid.toggleCell(event.mouseButton.x, event.mouseButton.y, cellSize);
                             }
@@ -238,61 +316,86 @@ int main() {
                 }
             }
 
-            // Met à jour la grille uniquement si la simulation est en cours  
             if (simulationRunning) {
-                grid.update(); // Applique les règles du jeu  
+                grid.update();
                 iterationsCount++;
                 if (maxIterations > 0 && iterationsCount >= maxIterations) {
                     startButton.disableButton();
-                    simulationRunning = false; // Arrête la simulation après le nombre d'itérations  
+                    simulationRunning = false;
                 }
+
+                // Mettre à jour le texte des cellules vivantes  
+                int livingCells = grid.countLivingCells();
+                livingCellsText.setString("Cellules vivantes : " + to_string(livingCells));
+                iterationsText.setString("Itérations : " + to_string(iterationsCount));
             }
 
-            // Effacement de la fenêtre  
             window.clear(sf::Color::Black);
-            grid.draw(window, cellSize); // Dessiner la grille  
-            startButton.draw(window); // Dessiner le bouton  
-            window.display(); // Afficher le contenu de la fenêtre  
+            grid.draw(window, cellSize);
+            startButton.draw(window);
+            clearButton.draw(window);
 
-            // Attendre avant de passer à la prochaine génération (100 ms)  
+            // Dessiner le texte des cellules vivantes et des itérations  
+            window.draw(livingCellsText);
+            window.draw(iterationsText);
+
+            window.display();
+
             if (simulationRunning) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
             }
         }
     }
-    else { // Mode terminal  
-        while (true) {
-            cout << "Entrez le nom du fichier d'entrée : ";
-            cin >> filename;
+    else {  // Mode terminal  
+        cout << "Entrez le nom du fichier d'entrée : ";
+        cin >> filename;
 
-            ifstream infile(filename);
-            if (!infile) {
-                cerr << "Erreur : Impossible d'ouvrir le fichier." << endl;
-                return 1;
+        ifstream infile(filename);
+        if (!infile) {
+            cerr << "Erreur : Impossible d'ouvrir le fichier." << endl;
+            return 1;
+        }
+
+        infile >> rows >> cols;
+        grid = Grid(rows, cols);
+        grid.initializeFromInput(filename);
+        infile.close();
+
+        cout << "État initial de la grille : " << endl;
+        grid.print();
+
+        int generations;
+        cout << "Entrez le nombre de générations à simuler : ";
+        cin >> generations;
+
+        // Créer un répertoire de sortie basé sur le nom du fichier d'entrée  
+        string outputDir = filename + "_out";
+
+        // Vérifier si le répertoire existe, sinon créer avec l'API Win32  
+        if (!directoryExists(outputDir)) {
+            if (createDirectory(outputDir)) {
+                cout << "Le répertoire de sortie a été créé : " << outputDir << endl;
             }
+            else {
+                cerr << "Erreur : Impossible de créer le répertoire de sortie." << endl;
+                return 1; // Quitter si l'échec de la création du répertoire  
+            }
+        }
+        else {
+            cout << "Le répertoire de sortie existe déjà : " << outputDir << endl;
+        }
 
-            infile >> rows >> cols;
-            Grid grid(rows, cols);
-            grid.initializeFromInput(filename);
-            infile.close();
-
-            cout << "État initial de la grille : " << endl;
+        for (int generation = 0; generation < generations; ++generation) {
+            grid.update();
+            cout << "État de la grille à la génération " << generation + 1 << " : " << endl;
             grid.print();
 
-            int generations;
-            cout << "Entrez le nombre de générations à simuler : ";
-            cin >> generations;
-
-            for (int generation = 0; generation < generations; ++generation) {
-                grid.update();
-                cout << "État de la grille à la génération " << generation + 1 << " : " << endl;
-                grid.print();
-            }
-            
-            return 0;
-            
-              
+            // Sauvegarder chaque génération dans un fichier  
+                        // Sauvegarder chaque génération dans un fichier  
+            grid.saveToFile(outputDir, "game_of_life", generation + 1);
         }
+
+        cout << "Simulation terminée. Les états de la grille ont été sauvegardés." << endl;
     }
 
     return 0;
